@@ -21,3 +21,10 @@ Queue overload
 Why this POC matters
 This is the foundation of schedulers, agents, and infra tools.
 If you can build this cleanly, you understand Go concurrency.
+
+
+'{
+    "Print Hello": "echo Hello World",
+    "Print Name": "echo Tomiwa Idowu",
+    "Random": "ping google.com"
+}'

@@ -1,38 +1,49 @@
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
 
 	"github.com/cscoderr/taskor/internal"
 )
 
 func main() {
-	var workers = []*internal.Worker{
-		internal.CreateRandWorker(),
-		internal.CreateRandWorker(),
-		internal.CreateRandWorker(),
-	}
-	jobs := make(chan internal.Job, 10)
-	results := make(chan internal.Result, 10)
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	for index, worker := range workers {
-		go func() {
-			fmt.Printf("Worker index: %d is with ID: %d", index, worker.ID)
-		}()
-	}
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-	
+	go func() {
+		<-shutdown
+		cancel()
+	}()
 
-	fmt.Printf("%v\n", *workers[2])
+	jobsJson, numOfWorkers := internal.InputFlagHandler()
 
-	name := flag.String("name", "", "Just a random name")
-	flag.Parse()
+	output := internal.ParseJobJson(jobsJson)
 
-	if *name == "" {
-		fmt.Println("Please provide a name user -name flag")
-	}
+	var workers = internal.NewWorkers(*numOfWorkers)
 
-	fmt.Println(*name)
+	var jobs = internal.CreateJobsFromMap(output)
+	jobsch := make(chan internal.Job, len(jobs))
+	resultsch := make(chan internal.Result, len(jobs))
 
+	internal.StartWorkers(ctx, workers, jobsch, resultsch, &wg)
+	internal.DispatchJobs(jobs, jobsch)
+
+	go func() {
+		wg.Wait()
+		close(resultsch)
+	}()
+	internal.PrintJobResults(resultsch, len(jobs))
+
+	<-ctx.Done()
+	fmt.Println("Shut down gracefully!!!")
 }

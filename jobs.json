@@ -1,0 +1,9 @@
+{
+  "Print Hello": "echo Hello World",
+  "Print Name": "echo Tomiwa Idowu",
+  "Ping Google": "ping -c 3 google.com",
+  "Check Disk": "df -h",
+  "List Files": "ls -lh",
+  "Current Date": "date",
+  "Random Number": "echo $RANDOM"
+}
