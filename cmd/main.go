@@ -9,7 +9,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cscoderr/taskor/internal"
+	"github.com/cscoderr/taskor/internal/config"
+	"github.com/cscoderr/taskor/internal/job"
+	"github.com/cscoderr/taskor/internal/pool"
+	"github.com/cscoderr/taskor/internal/types"
 )
 
 func main() {
@@ -25,24 +28,24 @@ func main() {
 		cancel()
 	}()
 
-	jobsJson, numOfWorkers := internal.InputFlagHandler()
+	jobsJson, numOfWorkers := config.InputFlagHandler()
 
-	output := internal.ParseJobJson(jobsJson)
+	output := config.ParseJobJson(jobsJson)
 
-	var workers = internal.NewWorkers(*numOfWorkers)
+	var workers = pool.NewWorkers(*numOfWorkers)
 
-	var jobs = internal.CreateJobsFromMap(output)
-	jobsch := make(chan internal.Job, len(jobs))
-	resultsch := make(chan internal.Result, len(jobs))
+	var jobs = job.CreateJobsFromMap(output)
+	jobsch := make(chan types.Job, len(jobs))
+	resultsch := make(chan types.Result, len(jobs))
 
-	internal.StartWorkers(ctx, workers, jobsch, resultsch, &wg)
-	internal.DispatchJobs(jobs, jobsch)
+	pool.StartWorkers(ctx, workers, jobsch, resultsch, &wg)
+	job.DispatchJobs(jobs, jobsch)
 
 	go func() {
 		wg.Wait()
 		close(resultsch)
 	}()
-	internal.PrintJobResults(resultsch, len(jobs))
+	job.PrintJobResults(resultsch, len(jobs))
 
 	<-ctx.Done()
 	fmt.Println("Shut down gracefully!!!")

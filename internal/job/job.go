@@ -1,71 +1,29 @@
-package internal
+package job
 
 import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/cscoderr/taskor/internal/types"
 )
 
-type JobStatus int
-
-const (
-	Initiated JobStatus = iota
-	Started
-	Running
-	Done
-	Cancelled
-	Failed
-)
-
-func (s JobStatus) String() string {
-	switch s {
-	case Initiated:
-		return "Initiated"
-	case Started:
-		return "Started"
-	case Done:
-		return "Done"
-	case Running:
-		return "Running"
-	case Cancelled:
-		return "Cancelled"
-	case Failed:
-		return "Failed"
-	default:
-		return "unknown"
-	}
-}
-
-type Job struct {
-	ID      int
-	Name    string
-	Command []string
-	Status  JobStatus
-}
-
-type Result struct {
-	Job    *Job
-	Output []byte
-	Error  []byte
-}
-
-func CreateJobsFromMap(data map[string]any) []*Job {
-	var jobs = make([]*Job, 0, len(data))
+func CreateJobsFromMap(data map[string]any) []*types.Job {
+	var jobs = make([]*types.Job, 0, len(data))
 	jobId := 1
 	for key, value := range data {
 		cmd, ok := value.(string)
 		if !ok {
 			continue
 		}
-		job := &Job{
+		job := &types.Job{
 			ID:      jobId,
 			Name:    key,
 			Command: []string{"-c", cmd},
-			Status:  Initiated,
+			Status:  types.Initiated,
 		}
 		jobs = append(jobs, job)
 		jobId++
@@ -73,39 +31,43 @@ func CreateJobsFromMap(data map[string]any) []*Job {
 	return jobs
 }
 
-func JobRunner(ctx context.Context, worker *Worker, jobs <-chan Job, results chan<- Result, wg *sync.WaitGroup) {
+func JobRunner(ctx context.Context, worker *types.Worker, jobs <-chan types.Job, results chan<- types.Result, wg *sync.WaitGroup) {
 	defer wg.Done()
 	for job := range jobs {
+		job.Status = types.Running
 		result := ExecuteTask(ctx, &job)
 		results <- result
 	}
 }
 
-func ExecuteTask(ctx context.Context, job *Job) Result {
+func ExecuteTask(ctx context.Context, job *types.Job) types.Result {
 	cmd := exec.CommandContext(ctx, "sh", job.Command...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
 	cmd.Stderr = &errBuf
 	if err := cmd.Run(); err != nil {
-		job.Status = Failed
-		log.Fatalf("could not run command: %v", err)
+		job.Status = types.Failed
+		return types.Result{
+			Job:   job,
+			Error: []byte(err.Error()),
+		}
 	}
-	job.Status = Done
-	return Result{
+	job.Status = types.Done
+	return types.Result{
 		Job:    job,
 		Output: outBuf.Bytes(),
 		Error:  errBuf.Bytes(),
 	}
 }
 
-func DispatchJobs(jobs []*Job, jobsch chan<- Job) {
+func DispatchJobs(jobs []*types.Job, jobsch chan<- types.Job) {
 	for _, job := range jobs {
 		jobsch <- *job
 	}
 	close(jobsch)
 }
 
-func PrintJobResults(results <-chan Result, jobLength int) {
+func PrintJobResults(results <-chan types.Result, jobLength int) {
 	for result := range results {
 		fmt.Println(strings.Repeat("=", 70))
 		fmt.Printf("JOB #%d: %s\n", result.Job.ID, result.Job.Name)
